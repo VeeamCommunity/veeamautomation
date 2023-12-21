@@ -11,7 +11,6 @@
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![MIT License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
 
 
 
@@ -139,8 +138,6 @@ Here are other locations which provide basic Veeam scripts or API libraries:
 [issues-url]: https://github.com/VeeamCommunity/veeamautomation/issues
 [license-shield]: https://img.shields.io/github/license/VeeamCommunity/veeamautomation.svg?style=for-the-badge
 [license-url]: https://github.com/VeeamCommunity/veeamautomation/blob/master/LICENSE.txt
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://www.linkedin.com/in/jonah-m254/
 [product-screenshot]: images/screenshot.png
 [Next.js]: https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white
 [Next-url]: https://nextjs.org/
