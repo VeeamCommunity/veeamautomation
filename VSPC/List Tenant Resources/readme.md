@@ -13,7 +13,7 @@ This script provides an easy way of compiling backup, replication, M365, and lic
 3. Update the base URLs with the VSPC server name.
 4. Add or remove entries in 1-3 for each VSPC server you wish to query. The script by default is configured for 2 servers.
 
-Additional note: Depending on the number of companies added to your VSPC server, you may hit API throttling limits. In order to increase or disable these, follow this guide: https://helpcenter.veeam.com/docs/vac/rest/throttling.html
+Additional note: Depending on the number of companies added to your VSPC server, you may hit API throttling limits. In order to increase or disable these, follow this guide: https://helpcenter.veeam.com/docs/vac/rest/throttling_config.html
 
 # Related Links
 
