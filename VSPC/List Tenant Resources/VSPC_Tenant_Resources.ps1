@@ -412,7 +412,6 @@ for($i=0; $i -lt $regions.Count; $i++) {
                         if($usage.Count -gt 0) {
                             $RIPEnabled = "No"
                             $RIPDays = 0
-                            $RIPUsage = 0
                             if($tenant.isBackupProtectionEnabled) {
                                 $RIPEnabled = "Yes"
                                 $RIPDays = $tenant.backupProtectionPeriod
