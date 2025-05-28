@@ -1,7 +1,28 @@
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
-#TODO: Test backupResourcesEnabled boolean with v8
-#TODO: Test new vb365 tab with VSPC v8
+#TODO: Code cleanup/optimization
+#TODO: Debug Kem Krest and 0 usage M365 customers
+#TODO: Licensed users on M365
+#TODO: Fix "Keep Years" M365 retention string so it says "Forever"
+#TODO: Add location column to tabs
+# Ex: 
+    #get all locations
+    #$string = $regions[$i] + ": Getting list of all company locations..."
+    #$moreRecords = $true
+    #$locations = [System.Collections.ArrayList]::new()
+    #$offset = 0
+    #do {
+    #    $sitesURL = $baseURL[$i] + 'organizations/{organization_uid}/locations?limit=500&offset=' + $offset
+    #    $results = Invoke-RestMethod -Uri $sitesURL -Method GET -Headers $headers[$i]
+    #    $sites.AddRange($results.data)
+    #
+    #    if($results.meta.pagingInfo.Count -ge 500) {
+    #        $offset += 500
+    #    }
+    #    else {
+    #        $moreRecords = $false
+    #    }
+    #} while($moreRecords)
 
 #ignore SSL warnings
 if (-not("dummy" -as [type])) {
@@ -26,29 +47,31 @@ public static class Dummy {
 
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [dummy]::GetDelegate()
 
-$regions = @("US", "NL")
+$regions = @("US","NL")
 
 #VSPC token and header
-$Token1 = 'TOKEN_1_HERE'
-$Token2 = 'TOKEN_2_HERE'
-$Headers1 = @{
-    Authorization="Bearer $Token1"
+$USToken = '<API_TOKEN>'
+$NLToken = '<API_TOKEN>'
+$USHeaders = @{
+    Authorization="Bearer $USToken"
+    "x-client-version"="3.5.1"
 }
-$Headers2 = @{
-    Authorization="Bearer $Token2"
+$NLHeaders = @{
+    Authorization="Bearer $NLToken"
+    "x-client-version"="3.5.1"
 }
-$headers = @($Headers1, $Headers2)
+$headers = @($USHeaders, $NLHeaders)
 
 
 #VSPC base url
-$BaseURL1 = "https://vspc01/api/v3/"
-$BaseURL2 = "https://vspc02/api/v3/"
-$baseURL = @($BaseURL1, $BaseURL2)
+$BaseURL1 = "https://vspc01:1280/api/v3/"
+$BaseURL2 = "https://vspc02:1280/api/v3/"
+$baseURL = @($BaseURL2, $BaseURL1)
 
 #File path for data export
-$FilePath1 = $env:USERPROFILE + "\Downloads\" + $regions[0] + "_ConsumptionReport_" + (Get-Date -Format "yyyy-MM-dd_HH-mm-ss") + ".xlsx"
-$FilePath2 = $env:USERPROFILE + "\Downloads\" + $regions[1] + "_ConsumptionReport_" + (Get-Date -Format "yyyy-MM-dd_HH-mm-ss") + ".xlsx"
-$FilePath = @($FilePath1, $FilePath2)
+$USFilePath = $env:USERPROFILE + "\Downloads\US_ConsumptionReport_" + (Get-Date -Format "yyyy-MM-dd_HH-mm-ss") + ".xlsx"
+$NLFilePath = $env:USERPROFILE + "\Downloads\NL_ConsumptionReport_" + (Get-Date -Format "yyyy-MM-dd_HH-mm-ss") + ".xlsx"
+$FilePath = @($USFilePath, $NLFilePath)
 
 #Check for/install the ImportExcel module
 if (Get-Module -ListAvailable -Name ImportExcel) {
@@ -236,14 +259,13 @@ for($i=0; $i -lt $regions.Count; $i++) {
     }
 
     #get vb365 resources
-    #NOTE: This API seems to act like a POST command with v7/API 3.3. Likely a bug. Needs to be tested against VSPC v8
     $string = $regions[$i] + ": Getting VB365 resource information..."
     Write-Host $string
     $vb365Resources = [System.Collections.ArrayList]::new()
     $moreRecords = $true
     $offset = 0
     do {
-        $vb365UsageURL = $baseURL[$i] + 'organizations/companies/vb365Resources?limit=500&offset=' + $offset
+        $vb365UsageURL = $baseURL[$i] + 'organizations/companies/hostedResources/vb365?limit=500&offset=' + $offset
         $results = Invoke-RestMethod -Uri $vb365UsageURL -Method GET -Headers $headers[$i]
         $vb365Resources.AddRange($results.data)
 
@@ -256,14 +278,13 @@ for($i=0; $i -lt $regions.Count; $i++) {
     } while($moreRecords)
 
     #get M365 backup resources
-    #NOTE: This API seems to act like a POST command with v7/API 3.3. Likely a bug. Needs to be tested against VSPC v8
     $string = $regions[$i] + ": Getting all VB365 backup resource information..."
     Write-Host $string
     $vb365BackupResourceList = [System.Collections.ArrayList]::new()
     $moreRecords = $true
     $offset = 0
     do {
-        $vb365BackupUsageURL = $baseURL[$i] + 'organizations/companies/vb365Resources/backupResources?limit=500&offset=' + $offset
+        $vb365BackupUsageURL = $baseURL[$i] + 'organizations/companies/hostedResources/vb365/backupResources?limit=500&offset=' + $offset
         $results = Invoke-RestMethod -Uri $vb365BackupUsageURL -Method GET -Headers $headers[$i]
         $vb365BackupResourceList.AddRange($results.data)
 
@@ -290,63 +311,149 @@ for($i=0; $i -lt $regions.Count; $i++) {
         $string = $regions[$i] + ": Collecting information for tenant (" + $count + "/" + $companies.Count + ") " + $company.name + " - " + $company.instanceUid + "..."
         Write-host $string
 
-        #NOTE: This part needs testing with VSPC v8
-        #get VB365 server name, repository name, retention period, and proxy name, repo type, and retention
+        #get license consumption
+        foreach($license in $licensingInfo) {
+            if($license.organizationUid -eq $company.instanceUid) {
+                foreach($server in $license.servers) {
+                    foreach($workload in $server.workloads) {
+                        if($server.serverType -ne 'VB365' -and $server.serverType -ne 'CloudConnect') {
+			                #Get who owns the license
+			                $licenseOwnerUri = $baseURL[$i] + '/licensing/backupServers/' + $server.serverUid
+			                $moreLicenseInfo = (Invoke-RestMethod -Method GET -Uri $licenseOwnerUri -Headers $headers[$i]).data
+                            $licenseOwner = $moreLicenseInfo.company
+                        }
+                        else {
+                            $licenseOwner = "CyberFortress"
+                        }
+
+			            $LicenseInfo = [PSCustomObject]@{
+                            'Company' = $company.Name
+                            'ID' = $company.instanceUid
+                            'Type' = $server.serverType
+			                'License Owner' = $licenseOwner
+                            'Instance Type' = $workload.description
+                            'Count' = $workload.usedCount
+                            'PPU' = $workload.workloadsByPlatform[0].weight
+                            'Points Used' = $workload.usedUnits
+                        }
+
+
+                        $Licenses += $LicenseInfo
+                    }
+                }
+
+                $licensingInfo.Remove($license)
+                break
+            }
+        }
+
+        # Process VB365 backup resources (join VB365 server, proxy, and repository info)
         $usingM365 = $false
-        foreach($backupResource in $vb36BackupResourceList) {
-            if($backupResource.companyUid -eq $company.instanceUid) {
+        foreach ($backupResource in @($vb365BackupResourceList)) {
+            if ($backupResource.companyUid -eq $company.instanceUid) {
                 $usingM365 = $true
+                foreach ($resource in @($vb365Resources)) {
+                    if ($backupResource.vb365ResourceUid -eq $resource.instanceUid) {
+                        $vb365Proxy = ""
+                        $vb365ProxyPool = ""
+                        $vb365Retention = ""
+                        $vb365Repo = ""
+                        $vb365ObjectRepo = $false
+                        $vb365CopyRepo = $false
+                        $vb365PrimaryRepo = $false
 
-                foreach($resource in $vb365Resources) {
-                    if($backupResource.vb365ResourceUid -eq $resource.instanceUid) {
-                        $vb365Host = $vb365Proxy = $vb365Retention = $vb365Repo = ""
-                        $vb365ObjectRepo = $vb365CopyRepo = $vb365PrimaryRepo = $false
-
-                        foreach($server in $vb365Servers) {
-                            if($server.instanceUid -eq $resource.vb365ServerUid) {
-                                $vb365Host = $resource.name
-                                break
+                        if ($null -ne $backupResource.proxyUid) {
+                            foreach ($proxy in @($vb365Proxies)) {
+                                if ($backupResource.proxyUid -eq $proxy.instanceUid) {
+                                    $vb365Proxy = $proxy.hostName
+                                    break
+                                }
                             }
                         }
 
-                        foreach($proxy in $vb365Proxies) {
-                            if($backupResource.proxyUid -eq $proxy.instanceUid) {
-                                $vb365Proxy = $proxy.hostName
-                                break
+                        # Proxy pool logic
+                        if ($null -ne $backupResource.proxyPoolUid) {
+                            foreach ($proxyPool in @($vb365ProxyPools)) {
+                                if ($backupResource.proxyPoolUid -eq $proxyPool.instanceUid) {
+                                    $vb365ProxyPool = $proxyPool.name
+                                    break
+                                }
                             }
                         }
 
-                        foreach($repo in $vb365Repos) {
-                            if($backupResource.repositoryUid -eq $repo.instanceUid) {
+                        foreach ($repo in @($vb365Repos)) {
+                            if ($backupResource.repositoryUid -eq $repo.instanceUid) {
                                 $vb365Repo = $repo.name
-                                $vb365Retention = $repo.yearlyRetentionPeriod
+                                $vb365Retention = $repo.retentionType
+                                $vb365RetentionPeriodType = $repo.retentionPeriodType
+
+                                if($vb365RetentionPeriodType -eq "Yearly" -or $vb365RetentionPeriodType -eq "Keep Years") {
+                                    if($repo.yearlyRetentionPeriod -eq "Year1") {
+                                        $vb365RetentionPeriod = $repo.yearlyRetentionPeriod.Replace("Year", "") + " Year"
+                                    }
+                                    else {
+                                        $vb365RetentionPeriod = $repo.yearlyRetentionPeriod.Replace("Years", "") + " Years"
+                                    }
+                                }
+                                elseif($vb365RetentionPeriodType -eq "Monthly") {
+                                    if($repo.yearlyRetentionPeriod -eq "Month1") {
+                                        $vb365RetentionPeriod = $repo.yearlyRetentionPeriod.Replace("Month", "") + " Month"
+                                    }
+                                    else {
+                                        $vb365RetentionPeriod = $repo.yearlyRetentionPeriod.Replace("Months", "") + " Months"
+                                    }
+                                }
+                                elseif($vb365RetentionPeriodType -eq "Daily") {
+                                    if($repo.yearlyRetentionPeriod -eq "Day1") {
+                                        $vb365RetentionPeriod = $repo.yearlyRetentionPeriod.Replace("Day", "") + " Day"
+                                    }
+                                    else {
+                                        $vb365RetentionPeriod = $repo.yearlyRetentionPeriod.Replace("Day", "") + " Day"
+                                    }
+                                }
+                                elseif($vb365RetentionPeriodType -eq "Keep Years") {
+                                    $vb365RetentionPeriod = "Forever"
+                                }
+                                else {
+                                    $vb365RetentionPeriod = $vb365RetentionPeriodType
+                                }
+
+                                $vb365Encrypted = $false
+                                if($null -ne $repo.encryptionKeyId) {
+                                    $vb365Encrypted = $true
+                                }
+
+
                                 $vb365ObjectRepo = $repo.isObjectStorageRepository
-                                $M365BackupSize = $repo.usedSpaceBytes / 1024 / 1024 / 1024 / 1024
+                                # Divide by 1TB for TB units (1TB = 1,099,511,627,776 bytes)
+                                $M365BackupSize = $repo.usedSpaceBytes / 1TB
                                 $vb365PrimaryRepo = $repo.isAvailableForBackupJob
                                 $vb365CopyRepo = $repo.isAvailableForCopyJob
                                 break
                             }
                         }
+
                         $ResourceInfo = [PSCustomObject]@{
-                            'Company' = $company.name
-                            'ID' = $company.instanceUid
-                            'Server' = $vb365Host
-                            'Proxy' = $vb365Proxy
-                            'Repository' = $vb365Repo
-                            'Retention' = $vb365Retention
-                            'Is Object' = $vb365ObjectRepo
-                            'Is Primary' = $vb365PrimaryRepo
-                            'Is Copy' = $vb365CopyRepo
+                            'Company'               = $company.name
+                            'ID'                    = $company.instanceUid
+                            'Server'                = $resource.friendlyName
+                            'Proxy'                 = $vb365Proxy
+                            'Proxy Pool'            = $vb365ProxyPool
+                            'Repository'            = $vb365Repo
+                            'Retention Type'        = $vb365Retention
+                            'Retention Period'      = $vb365RetentionPeriod
+                            'Used Space (TB)'       = $M365BackupSize
+                            'Encrypted'             = $vb365Encrypted
+                            'Object Repository'     = $vb365ObjectRepo
+                            'Primary Repository'    = $vb365PrimaryRepo
+                            'Copy Repository'       = $vb365CopyRepo
                         }
                         $vb365Backups += $ResourceInfo
-
                         $vb365Resources.Remove($resource)
                         break
                     }
                 }
-
                 $vb365BackupResourceList.Remove($backupResource)
-                break;
             }
         }
 
@@ -366,17 +473,25 @@ for($i=0; $i -lt $regions.Count; $i++) {
                         $protectedSites = $counter.value
                     }
                     elseif($counter.Type -eq "Vb365BackupSize") {
-                        $M365BackupSize = $counter.value
+                        $M365BackupSize = $counter.value / 1TB
                     }
                     elseif($counter.type -eq "CloudInsiderProtectionBackupSize") {
-                        $RIPUsage = $counter.value / 1024 / 1024 / 1024 / 1024
+                        $RIPUsage = $counter.value / 1TB
                     }
                 }
                 
                 if($protectedUsers -gt 0 -or $M365BackupSize -gt 0) {
+                    # Get the licensed user count for this company from the $Licenses collection
+                    $licenseRecord = $Licenses | Where-Object { $_.ID -eq $company.instanceUid -and $_.Type -eq 'VB365' }
+                    $licensedUsers = 0
+                    if ($licenseRecord) {
+                        $licensedUsers = $licenseRecord.Count
+                    }
+
                     $ResourceInfo = [PSCustomObject]@{
                         'Company' = $company.Name
                         'ID' = $resource.companyUid
+                        'Licensed Users' = $licensedUsers
                         'Protected Users' = $protectedUsers
                         'Protected Sites' = $protectedSites
                         'Protected Teams' = $protectedTeams
@@ -386,7 +501,6 @@ for($i=0; $i -lt $regions.Count; $i++) {
                     $M365Resources += $ResourceInfo
                 }
 
-                break
             }
         }
 
@@ -426,19 +540,16 @@ for($i=0; $i -lt $regions.Count; $i++) {
                                     foreach($CChost in $CChosts) {
                                         if($tenant.backupServerUid -eq $CChost.siteUid) {
                                             #get parent repository information
-                                            $repoURL = $baseURL[$i] + 'infrastructure/backupServers/' + $resource.siteUid + '/repositories/' + $resource.repositoryUid
+                                            $repoURL = $baseURL[$i] + 'infrastructure/backupServers/' + $resource.siteUid + '/repositories/' + $resource.repositoryUid + '?expand=BackupRepositoryInfo'
                                             $repo = (Invoke-RestMethod -Uri $repoURL -Method GET -Headers $headers[$i]).data
 
-                                            $hotUsed = 0
-                                            $archiveUsed = 0
-                                            if($repo.type -eq "ScaleOut") {
-                                                $hotUsed = $usage.perfomanceTierUsage / 1024 / 1024 / 1024 / 1024
-                                                $archiveUsed = $usage.capacityTierUsage / 1024 / 1024 / 1024 / 1024
-                                                $totalUsed = $hotUsed + $archiveUsed
-                                            }
-                                            else {
-                                                $hotUsed = $usage.usedStorageQuota / 1024 / 1024 / 1024 / 1024
-                                                $totalUsed = $usage.usedStorageQuota / 1024 / 1024 / 1024 / 1024
+                                            $hotUsed = $capacityUsed = $archiveUsed = 0
+                                            $hotUsed = $usage.performanceTierUsage / 1TB
+                                            $capacityUsed = $usage.capacityTierUsage / 1TB
+                                            $archiveUsed = $usage.archiveTierUsage / 1TB
+                                            $totalUsed = $usage.usedStorageQuota / 1TB
+                                            if($hotUsed -le 0 -and $capacityUsed -le 0 -and $archiveUsed -le 0) {
+                                                $hotUsed = $totalUsed
                                             }
 
                                             $ResourceInfo = [PSCustomObject]@{
@@ -450,15 +561,16 @@ for($i=0; $i -lt $regions.Count; $i++) {
                                                 'Last Active' = $tenant.lastActive
                                                 'VBR Host' = $CChost.siteName
                                                 'Repository' = $repo.name
-                                                'Type' = $repo.type
-                                                'Repository Host' = $repo.hostName
+                                                'Type' = $repo._embedded.type
+                                                'Repository Host' = $repo._embedded.hostName
                                                 'RIP Enabled' = $RIPEnabled
                                                 'RIP Days' = $RIPDays
                                                 'RIP Usage (TB)' = $RIPUsage
                                                 'Hot Storage Used (TB)' = $hotUsed
+                                                'Capacity Tier Used (TB)' = $capacityUsed
                                                 'Archive Tier Used (TB)' = $archiveUsed
                                                 'Total Storage Used (TB)' = $totalUsed
-                                                'Quota (TB)' = $usage.storageQuota / 1024 / 1024 / 1024 / 1024
+                                                'Quota (TB)' = $usage.storageQuota / 1TB
                                                 'Percent Used' = $usage.usedStorageQuota / $usage.storageQuota * 100
                                             }
                                             $BaaSResources += $ResourceInfo
@@ -569,42 +681,16 @@ for($i=0; $i -lt $regions.Count; $i++) {
             }
         }
 
-        #get license consumption
-        foreach($license in $licensingInfo) {
-            if($license.organizationUid -eq $company.instanceUid) {
-                foreach($server in $license.servers) {
-                    foreach($workload in $server.workloads) {
-                        $LicenseInfo = [PSCustomObject]@{
-                            'Company' = $company.Name
-                            'ID' = $company.instanceUid
-                            'Type' = $server.serverType
-                            'Instance Type' = $workload.description
-                            'Count' = $workload.usedCount
-                            'PPU' = $workload.workloadsByPlatform[0].weight
-                            'Points Used' = $workload.usedUnits
-                        }
-
-                        $Licenses += $LicenseInfo
-                    }
-                }
-
-                $licensingInfo.Remove($license)
-                break
-            }
-        }
-
         $count++
     }
-
-
 
     Write-Host Saving data to XLSX...
     #export usage information to CSV and save to downloads folder
     $Licenses | Export-Excel $FilePath[$i] -Autosize -TableName Licensing -WorksheetName Licensing
     $BaaSResources | Export-Excel $FilePath[$i] -Autosize -TableName BaaSResources -WorksheetName BaaS
     $DRaaSResources | Export-Excel $FilePath[$i] -Autosize -TableName DRaaSResources -WorksheetName DRaaS
-    $M365Resources | Export-Excel $FilePath[$i] -Autosize -TableName M365Resources -WorksheetName M365
-    $M365Backups | Export-Excel $FilePath[$i] -Autosize -TableName "VB365_Repos" -WorksheetName "VB365 Repos"
+    $M365Resources | Export-Excel $FilePath[$i] -Autosize -TableName M365Resources -WorksheetName "M365 Protection Metrics"
+    $vb365Backups | Export-Excel $FilePath[$i] -Autosize -TableName "VB365_Repos" -WorksheetName "VB365 Repository Information"
     $NoResources | Export-Excel $FilePath[$i] -Autosize -TableName "No_Resources" -WorksheetName "No Resources"
 }
 
