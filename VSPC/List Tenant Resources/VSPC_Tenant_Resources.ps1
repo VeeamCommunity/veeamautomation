@@ -1,8 +1,8 @@
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
 #TODO: Code cleanup/optimization
-#TODO: Debug Kem Krest and 0 usage M365 customers
-#TODO: Licensed users on M365
+#TODO: Debug S3-customers and 0 usage M365 customers
+#TODO: Licensed users on M365 tab
 #TODO: Fix "Keep Years" M365 retention string so it says "Forever"
 #TODO: Add location column to tabs
 # Ex: 
