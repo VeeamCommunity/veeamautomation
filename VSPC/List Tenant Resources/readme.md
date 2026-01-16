@@ -11,7 +11,7 @@ This script provides an easy way of compiling backup, replication, M365, and lic
 1. Update the regions with the regions where each VSPC is located (ex. US, NL). NOTE: Each region should be unique.
 2. Update tokens with valid API keys
 3. Update the base URLs with the VSPC server name.
-4. Add or remove entries in 1-3 for each VSPC server you wish to query. The script by default is configured for 2 servers.
+4. Add or remove entries in 1-3 for each VSPC server you wish to query. The script by default is configured for 3 servers.
 
 Additional note: Depending on the number of companies added to your VSPC server, you may hit API throttling limits. In order to increase or disable these, follow this guide: https://helpcenter.veeam.com/docs/vac/rest/throttling_config.html
 
