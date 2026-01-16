@@ -22,9 +22,37 @@ public static class Dummy {
 }
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [dummy]::GetDelegate()
 
-function Index-By { param($Items,$Key)  $m=@{}; foreach($i in $Items){$m[$i.$Key]=$i}; $m }
-function Group-By { param($Items,$Key)  $m=@{}; foreach($i in $Items){$k=$i.$Key; if(-not $m[$k]){$m[$k]=@()}; $m[$k]+=$i}; $m }
 function Say($r,$m){ Write-Host "${r}: $m" }
+
+function Group-By {
+    param($Items, $Key)
+
+    $m = @{}
+    foreach ($i in $Items) {
+        $k = $i.$Key
+        if ($null -eq $k) { continue }   # skip null keys
+
+        if (-not $m.ContainsKey($k)) {
+            $m[$k] = @()
+        }
+        $m[$k] += $i
+    }
+    $m
+}
+
+function Index-By {
+    param($Items, $Key)
+
+    $m = @{}
+    foreach ($i in $Items) {
+        $k = $i.$Key
+        if ($null -eq $k) { continue }   # skip null keys
+
+        $m[$k] = $i
+    }
+    $m
+}
+
 
 function Get-PagedResults {
     param (
@@ -228,13 +256,8 @@ foreach($r in $regions) {
     $BaaSUsageByTenant     = Group-By $baaSUsageItems 'tenantUid'
     $DraaSNativeByTenant   = Group-By $draaSNativeUsageItems 'tenantUid'
     $DraaSVCDByTenant      = Group-By $draaSVCDUsageItems 'tenantUid'
-
-    $TenantsUsingM365 = @{}
-    foreach($res in $vb365BackupResourceList){
-        if($res.tenantUid){
-            $TenantsUsingM365[$res.tenantUid] = $true
-        }
-    }
+    $LicensedUsersByCompany = Group-By $licensingInfo 'organizationUid'
+    $TenantsUsingM365 = Group-By $vb365BackupResourceList 'tenantUid'
 
     Say $r.Name "Compiling full resource usage information..."
     #get backup, replication, and M365 information and save to array
@@ -424,7 +447,14 @@ foreach($r in $regions) {
             }
 
             if ($LicensedUsersByCompany.ContainsKey($company.instanceUid)) {
-                $licensedUsers = $LicensedUsersByCompany[$company.instanceUid]
+                $licensedUsers = 0
+                foreach ($lic in $LicensedUsersByCompany[$company.instanceUid]) {
+                    foreach ($srv in $lic.servers) {
+                        foreach ($wl in $srv.workloads) {
+                            $licensedUsers += $wl.usedCount
+                        }
+                    }
+                }
             }
 
             if ($TenantsByCompany.ContainsKey($company.instanceUid)) {
